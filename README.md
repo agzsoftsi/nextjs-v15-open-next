@@ -1,36 +1,200 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Documentación del Proyecto
 
-## Getting Started
+- Proyecto: nextjs-v15-open-next
+- Stack principal: Next.js v15 + OpenNext (adapter)
+- Objetivo: Desplegar en arquitectura serverless (por ejemplo AWS Lambda) sin depender de Vercel.
 
-First, run the development server:
+## 1. Estructura del proyecto
+
+Carpeta raíz: contiene package.json, next.config.mjs, open-next.config.mjs, etc.
+
+Dentro de la raíz:
+
+./app/, ./pages/, ./public/, etc → tu app de Next.js.
+
+.next/ → carpeta generada por next build.
+
+.open-next/ → carpeta generada por open-next build, lista para despliegue serverless.
+
+## 2. Dependencias y scripts importantes en package.json
+
+Ejemplo relevante extraído de tu proyecto:
+
+```bash
+{
+  "name": "nextjs-v15-open-next",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "start-open": "open-next start",
+    "deploy": "open-next build"
+  },
+  "dependencies": {
+    "next": "15.5.6",
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "15.5.6",
+    "open-next": "^3.1.3",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
+
+```
+
+## Explicación de cada script:
+
+- npm run dev → Inicia el modo desarrollo con Turbopack (--turbopack) para recarga rápida.
+
+- npm run build → Ejecuta el build tradicional de Next.js (sin --turbopack) para generar .next/.
+
+- npm run deploy → Ejecuta open-next build, empaquetando la salida en .open-next/ lista para serverless.
+
+## 3. Archivo de configuración: open-next.config.mjs
+
+```bash
+export default {
+  outDir: ".open-next",
+  default: {
+    runtime: "aws-lambda"
+  },
+  awsLambda: {
+    functionName: "next15-open-next",
+    memory: 512,
+    timeout: 10
+  }
+};
+```
+
+## ¿Qué hacen estas propiedades?
+
+- outDir: Carpeta de salida del build de OpenNext (en tu caso .open-next).
+
+- default.runtime: Define el runtime serverless por defecto (aquí aws-lambda).
+
+- awsLambda: Opciones específicas para AWS Lambda:
+
+- functionName: nombre de la función en AWS Lambda.
+
+- memory: memoria asignada (MB).
+
+- timeout: tiempo máximo de ejecución (segundos).
+
+## Personalizaciones que puedes agregar:
+
+- region: si usas AWS, define la región.
+
+- edge: si decides usar runtime en Edge.
+
+Para otros proveedores (Cloudflare, Netlify) cambiarías runtime y añadirías sus configuraciones.
+
+## 4. Flujo local / desarrollo
+
+1. Desarrollo rápido:
+
+Esto arranca Next.js en modo desarrollo con Turbopack.
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Preparar para producción/local testing serverless:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run build
+npm run deploy
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+— build genera .next/.
 
-## Learn More
+— deploy genera .open-next/.
 
-To learn more about Next.js, take a look at the following resources:
+3. Verificar que .open-next/ contenga la estructura esperada:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- assets/ → archivos estáticos.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- server-functions/ o server-function/ → funciones Lambda.
 
-## Deploy on Vercel
+- open-next.output.json u otro manifest.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Posiblemente carpetas como image-optimization-function/, revalidation-function/ dependiendo de tu configuración.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+4. Simulación de entorno serverless local (opcional):
+
+Puedes usar herramientas como Serverless Framework + plugin serverless-offline para levantar las funciones localmente. Ejemplo de serverless.yml:
+
+```bash
+service: next15-open-next
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: us-east-1
+
+functions:
+  app:
+    handler: .open-next/server-functions/index.handler
+    events:
+      - httpApi: '*'
+
+plugins:
+  - serverless-offline
+```
+
+Luego:
+
+```bash
+npm install -D serverless serverless-offline
+npx serverless offline
+```
+
+Esto te permite probar localmente como si fuera una Lambda + API Gateway.
+
+5. Despliegue en AWS
+
+Pasos principales para desplegar en AWS:
+
+1. Asegúrate de que .open-next/ esté generada con npm run deploy.
+
+2. En tu archivo de infraestructura (por ejemplo serverless.yml, AWS CDK o Terraform) apunta al handler generado por OpenNext. Ejemplo (Serverless Framework):
+
+```bash
+service: next15-open-next
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: us-east-1
+
+functions:
+  app:
+    handler: .open-next/server-functions/index.handler
+    # Puedes incluir memoria/timeout aquí o usar lo definido en open-next.config.mjs
+    memorySize: 512
+    timeout: 10
+    events:
+      - httpApi: '*'
+
+```
+
+3. Ejecuta despliegue:
+
+```bash
+npx serverless deploy
+```
+
+4. Verifica en la consola de AWS que la función Lambda fue creada, y que API Gateway (HTTP API) esté apuntando correctamente.
+
+5. Prueba tu dominio / ruta pública para confirmar que la app funciona correctamente en producción.
